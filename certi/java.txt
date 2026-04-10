@@ -1,0 +1,100 @@
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+public class Attempt {
+    private int attemptId;
+    private String firstName;
+    private String lastName;
+    private String certName;
+    private String provider;
+    private int percentage;
+    private boolean isPassed;
+    private double cost;
+
+    public Attempt(String line) {
+        String[] s = line.split(",", -1);
+        this.attemptId = Integer.parseInt(s[0]);
+        this.firstName = s[2];
+        this.lastName = s[3];
+        this.certName = s[6];
+        this.provider = s[7];
+        this.cost = s[10].isEmpty() ? 0 : Double.parseDouble(s[10]);
+        // Ha nincs százalék vagy üres, 0-nak vesszük
+        this.percentage = (s[13] == null || s[13].isEmpty()) ? 0 : Integer.parseInt(s[13]);
+        this.isPassed = Boolean.parseBoolean(s[14]);
+    }
+
+    public String getFullName() { return firstName + " " + lastName; }
+    public String getCertName() { return certName; }
+    public String getProvider() { return provider; }
+    public int getPercentage() { return percentage; }
+    public boolean isPassed() { return isPassed; }
+    public double getCost() { return cost; }
+
+    @Override
+    public String toString() {
+        return certName + " (" + (isPassed ? "Sikeres" : "Sikertelen") + ")";
+    }
+}
+
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class GetCertifiedCLI {
+    public static void main(String[] args) {
+        List<Attempt> attempts = new ArrayList<>();
+        System.out.println("GetCertifiedCLI");
+
+        try {
+            attempts = Files.lines(Paths.get("get-certified.csv"))
+                    .skip(1)
+                    .map(Attempt::new)
+                    .collect(Collectors.toList());
+            System.out.println("1) Beolvasva: " + attempts.size() + " rekord.");
+        } catch (IOException e) {
+            System.err.println("Hiba a fájl beolvasásakor!");
+            return;
+        }
+
+        // 2. Legmagasabb pontszámú vizsga
+        System.out.println("\n2) Legmagasabb pontszámot elért vizsgázó:");
+        attempts.stream()
+                .max(Comparator.comparingInt(Attempt::getPercentage))
+                .ifPresent(a -> System.out.println("Név: " + a.getFullName() + ", Vizsga: " + a.getCertName() + " (" + a.getPercentage() + "%)"));
+
+        // 3. Sikertelen vizsgák szűrése, százalék szerint csökkenőben
+        System.out.println("\n3) Sikertelen vizsgák (80% feletti, de bukott kísérletek - ha van):");
+        attempts.stream()
+                .filter(a -> !a.isPassed())
+                .sorted(Comparator.comparingInt(Attempt::getPercentage).reversed())
+                .forEach(a -> System.out.println(a.getFullName() + ": " + a.getCertName() + " - " + a.getPercentage() + "%"));
+
+        // 4. Statisztika: Vizsgák száma szolgáltatónként (Provider)
+        System.out.println("\n4) Vizsgák száma szolgáltatónként:");
+        attempts.stream()
+                .collect(Collectors.groupingBy(Attempt::getProvider, Collectors.counting()))
+                .forEach((provider, count) -> System.out.println(provider + ": " + count + " db"));
+
+        // 5. Összes vizsgaköltség a sikeres vizsgákra
+        double totalCost = attempts.stream()
+                .filter(Attempt::isPassed)
+                .mapToDouble(Attempt::getCost)
+                .sum();
+        System.out.printf("\n5) Sikeres vizsgák összköltsége: %.2f USD\n", totalCost);
+
+        // 6. Egyedi szolgáltatók mentése
+        try {
+            List<String> providers = attempts.stream()
+                    .map(Attempt::getProvider)
+                    .distinct()
+                    .sorted()
+                    .collect(Collectors.toList());
+            Files.write(Paths.get("providers.txt"), providers);
+            System.out.println("\n6) Szolgáltatók listája mentve: providers.txt");
+        } catch (IOException e) { }
+    }
+}

@@ -1,0 +1,95 @@
+import javafx.application.Application;
+import javafx.collections.FXCollections;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
+import java.io.File;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class GetCertifiedGUI extends Application {
+
+    private List<Attempt> allData = new ArrayList<>();
+    private ListView<String> leftList = new ListView<>();
+    private ListView<String> rightList = new ListView<>();
+    private ComboBox<String> providerCombo = new ComboBox<>();
+
+    @Override
+    public void start(Stage stage) {
+        stage.setTitle("GetCertified GUI");
+
+        Button btnOpen = new Button("CSV Betöltése");
+        btnOpen.setOnAction(e -> openFile(stage));
+
+        providerCombo.setPromptText("Válassz szolgáltatót...");
+        providerCombo.setOnAction(e -> updateLeftList());
+
+        HBox topBox = new HBox(15, btnOpen, new Label("Provider:"), providerCombo);
+        topBox.setPadding(new Insets(10));
+
+        leftList.setPrefWidth(250);
+        rightList.setPrefWidth(400);
+        HBox.setHgrow(leftList, Priority.ALWAYS);
+        HBox.setHgrow(rightList, Priority.ALWAYS);
+
+        leftList.getSelectionModel().selectedItemProperty().addListener((obs, old, val) -> updateRightList(val));
+
+        HBox listBox = new HBox(15, leftList, rightList);
+        listBox.setPadding(new Insets(10));
+
+        BorderPane root = new BorderPane(listBox);
+        root.setTop(topBox);
+
+        stage.setScene(new Scene(root, 750, 500));
+        stage.show();
+    }
+
+    private void openFile(Stage stage) {
+        FileChooser fc = new FileChooser();
+        File file = fc.showOpenDialog(stage);
+        if (file != null) {
+            try {
+                allData = Files.lines(file.toPath()).skip(1).map(Attempt::new).collect(Collectors.toList());
+                
+                List<String> providers = allData.stream()
+                        .map(Attempt::getProvider)
+                        .distinct().sorted().collect(Collectors.toList());
+                providerCombo.setItems(FXCollections.observableArrayList(providers));
+            } catch (Exception ex) { }
+        }
+    }
+
+    private void updateLeftList() {
+        String selectedProvider = providerCombo.getValue();
+        if (selectedProvider == null) return;
+
+        // Szolgáltatóhoz tartozó vizsgázók egyedi nevei
+        List<String> names = allData.stream()
+                .filter(a -> a.getProvider().equals(selectedProvider))
+                .map(Attempt::getFullName)
+                .distinct().sorted().collect(Collectors.toList());
+        
+        leftList.setItems(FXCollections.observableArrayList(names));
+        rightList.getItems().clear();
+    }
+
+    private void updateRightList(String selectedName) {
+        if (selectedName == null) return;
+
+        // Az adott vizsgázó összes kísérlete az adott szolgáltatónál
+        List<String> details = allData.stream()
+                .filter(a -> a.getFullName().equals(selectedName) && a.getProvider().equals(providerCombo.getValue()))
+                .map(a -> a.getCertName() + " -> " + a.getPercentage() + "% (" + (a.isPassed() ? "PASS" : "FAIL") + ")")
+                .collect(Collectors.toList());
+        
+        rightList.setItems(FXCollections.observableArrayList(details));
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}
